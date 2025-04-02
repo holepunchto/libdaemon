@@ -1,0 +1,14 @@
+{
+  "private": true,
+  "name": "libdaemon",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/holepunchto/libdaemon.git"
+  },
+  "author": "Holepunch",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/holepunchto/libdaemon/issues"
+  },
+  "homepage": "https://github.com/holepunchto/libdaemon#readme"
+}
