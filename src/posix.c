@@ -13,7 +13,7 @@
 // Stephen A. Rago for more information on the double-fork technique.
 
 int
-daemon_spawn(daemon_t *daemon, const char *file, char *const argv[], char *const env[]) {
+daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const char *const env[]) {
   int fd[2];
 
   if (pipe(fd) < 0) return -1;
