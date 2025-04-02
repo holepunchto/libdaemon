@@ -15,6 +15,8 @@ target_sources(
   daemon
   INTERFACE
     include/daemon.h
+    include/daemon/posix.h
+    include/daemon/win32.h
 )
 
 if(WIN32)
@@ -70,6 +72,8 @@ target_link_libraries(
 install(TARGETS daemon_shared daemon_static)
 
 install(FILES include/daemon.h DESTINATION include)
+
+install(DIRECTORY include/daemon DESTINATION include)
 
 if(PROJECT_IS_TOP_LEVEL)
   enable_testing()

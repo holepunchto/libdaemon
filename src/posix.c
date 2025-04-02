@@ -13,7 +13,11 @@
 // Stephen A. Rago for more information on the double-fork technique.
 
 int
-daemon_spawn(const char *file, char *const argv[], char *const env[]) {
+daemon_spawn(daemon_t *daemon, const char *file, char *const argv[], char *const env[]) {
+  int fd[2];
+
+  if (pipe(fd) < 0) return -1;
+
   umask(0);
 
   struct rlimit rl;
@@ -28,7 +32,23 @@ daemon_spawn(const char *file, char *const argv[], char *const env[]) {
 
   if (pid < 0) return -1;
 
-  if (pid != 0) return 0;
+  if (pid != 0) {
+    close(fd[1]);
+
+    if (read(fd[0], &daemon->pid, sizeof(daemon->pid)) != sizeof(daemon->pid)) {
+      close(fd[0]);
+
+      return -1;
+    }
+
+    close(fd[0]);
+
+    int stat;
+
+    waitpid(pid, &stat, 0);
+
+    return 0;
+  }
 
   setsid();
 
@@ -44,7 +64,17 @@ daemon_spawn(const char *file, char *const argv[], char *const env[]) {
 
   if (pid < 0) abort();
 
-  if (pid != 0) exit(0);
+  if (pid != 0) {
+    close(fd[0]);
+
+    write(fd[1], &pid, sizeof(pid));
+    close(fd[1]);
+
+    exit(0);
+  }
+
+  close(fd[0]);
+  close(fd[1]);
 
   for (int i = 0; i < rl.rlim_max; i++) {
     close(i);
