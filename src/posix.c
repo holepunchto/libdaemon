@@ -86,5 +86,5 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
   fd1 = dup(0);
   fd2 = dup(0);
 
-  return execve(file, argv, env);
+  return execve(file, (char *const *) argv, (char *const *) env);
 }
