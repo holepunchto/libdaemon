@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -35,17 +36,31 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
   if (pid != 0) {
     close(fd[1]);
 
-    if (read(fd[0], &daemon->pid, sizeof(daemon->pid)) != sizeof(daemon->pid)) {
+    ssize_t n;
+
+    n = read(fd[0], &daemon->pid, sizeof(daemon->pid));
+
+    if (n != sizeof(daemon->pid)) {
       close(fd[0]);
+
+      waitpid(pid, NULL, 0);
 
       return -1;
     }
 
+    int err;
+
+    n = read(fd[0], &err, sizeof(err));
+
     close(fd[0]);
 
-    int stat;
+    waitpid(pid, NULL, 0);
 
-    waitpid(pid, &stat, 0);
+    if (n == sizeof(err)) {
+      errno = -err;
+
+      return -1;
+    }
 
     return 0;
   }
@@ -64,27 +79,36 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
 
   if (pid < 0) abort();
 
-  if (pid != 0) {
-    close(fd[0]);
+  if (pid != 0) _exit(0);
 
-    write(fd[1], &pid, sizeof(pid));
-    close(fd[1]);
-
-    exit(0);
-  }
+  pid = getpid();
 
   close(fd[0]);
-  close(fd[1]);
+
+  fcntl(fd[1], F_SETFD, FD_CLOEXEC);
+
+  write(fd[1], &pid, sizeof(pid));
 
   for (int i = 0; i < rl.rlim_max; i++) {
-    close(i);
+    if (i != fd[1]) close(i);
   }
 
-  int fd0, fd1, fd2;
+  int io = open("/dev/null", O_RDWR);
 
-  fd0 = open("/dev/null", O_RDWR);
-  fd1 = dup(0);
-  fd2 = dup(0);
+  if (io >= 0) {
+    dup2(io, 0);
+    dup2(io, 1);
+    dup2(io, 2);
 
-  return execve(file, (char *const *) argv, (char *const *) env);
+    if (io > 2) close(io);
+  }
+
+  execve(file, (char *const *) argv, (char *const *) env);
+
+  int err = errno;
+
+  write(fd[1], &err, sizeof(err));
+  close(fd[1]);
+
+  _exit(127);
 }

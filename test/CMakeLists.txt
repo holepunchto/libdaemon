@@ -2,6 +2,7 @@ add_subdirectory(fixtures)
 
 list(APPEND tests
   basic
+  file-missing
 )
 
 foreach(test IN LISTS tests)
