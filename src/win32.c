@@ -94,36 +94,36 @@ daemon__wtf8_decode1(const char **input) {
 }
 
 static inline ssize_t
-daemon__utf16_length_from_wtf8(const char *source_ptr) {
-  size_t w_target_len = 0;
+daemon__utf16_length_from_wtf8(const char *source) {
+  size_t target_len = 0;
   int32_t code_point;
 
   do {
-    code_point = daemon__wtf8_decode1(&source_ptr);
+    code_point = daemon__wtf8_decode1(&source);
 
     if (code_point < 0) return -1;
-    if (code_point > 0xFFFF) w_target_len++;
+    if (code_point > 0xFFFF) target_len++;
 
-    w_target_len++;
-  } while (*source_ptr++);
+    target_len++;
+  } while (*source++);
 
-  return w_target_len;
+  return target_len;
 }
 
 static inline void
-daemon__wtf8_to_utf16(const char *source_ptr, uint16_t *w_target) {
+daemon__wtf8_to_utf16(const char *source, uint16_t *target) {
   int32_t code_point;
 
   do {
-    code_point = daemon__wtf8_decode1(&source_ptr);
+    code_point = daemon__wtf8_decode1(&source);
 
     if (code_point > 0xFFFF) {
-      *w_target++ = (((code_point - 0x10000) >> 10) + 0xD800);
-      *w_target++ = ((code_point - 0x10000) & 0x3FF) + 0xDC00;
+      *target++ = (((code_point - 0x10000) >> 10) + 0xD800);
+      *target++ = ((code_point - 0x10000) & 0x3FF) + 0xDC00;
     } else {
-      *w_target++ = code_point;
+      *target++ = code_point;
     }
-  } while (*source_ptr++);
+  } while (*source++);
 }
 
 static inline int
@@ -197,9 +197,9 @@ daemon__quote_argument(const WCHAR *source, WCHAR *target) {
 }
 
 static inline int
-daemon__argv_to_command_line(const char *const *args, WCHAR **dst_ptr) {
+daemon__argv_to_command_line(const char *const *args, WCHAR **result) {
   if (args == NULL) {
-    *dst_ptr = NULL;
+    *result = NULL;
 
     return 0;
   }
@@ -246,7 +246,7 @@ daemon__argv_to_command_line(const char *const *args, WCHAR **dst_ptr) {
 
   free(tmp);
 
-  *dst_ptr = dst;
+  *result = dst;
 
   return 0;
 }
@@ -286,9 +286,9 @@ daemon__env_wcscmp(const void *a, const void *b) {
 }
 
 static inline int
-daemon__env_list_to_block(const char *const *env_list, WCHAR **dst_ptr) {
+daemon__env_list_to_block(const char *const *env_list, WCHAR **result) {
   if (env_list == NULL) {
-    *dst_ptr = NULL;
+    *result = NULL;
 
     return 0;
   }
@@ -300,7 +300,7 @@ daemon__env_list_to_block(const char *const *env_list, WCHAR **dst_ptr) {
   size_t len;
   size_t i;
   size_t var_size;
-  size_t env_block_count = 1;
+  size_t env_list_count = 1;
   WCHAR *dst_copy;
   WCHAR **ptr_copy;
   WCHAR **env_copy;
@@ -313,11 +313,11 @@ daemon__env_list_to_block(const char *const *env_list, WCHAR **dst_ptr) {
       if (len < 0) return len;
 
       env_len += len;
-      env_block_count++;
+      env_list_count++;
     }
   }
 
-  len = env_block_count * sizeof(WCHAR *);
+  len = env_list_count * sizeof(WCHAR *);
 
   p = malloc(len + env_len * sizeof(WCHAR));
   assert(p);
@@ -341,15 +341,17 @@ daemon__env_list_to_block(const char *const *env_list, WCHAR **dst_ptr) {
 
   *ptr_copy = NULL;
 
-  qsort(env_copy, env_block_count - 1, sizeof(wchar_t *), daemon__env_wcscmp);
+  qsort(env_copy, env_list_count - 1, sizeof(wchar_t *), daemon__env_wcscmp);
 
   for (ptr_copy = env_copy, i = 0; i < ARRAY_SIZE(daemon__required_env_vars);) {
     int cmp;
+
     if (!*ptr_copy) {
       cmp = -1;
     } else {
       cmp = daemon__env_strncmp(daemon__required_env_vars[i].wide_eq, daemon__required_env_vars[i].len, *ptr_copy);
     }
+
     if (cmp < 0) {
       var_size = GetEnvironmentVariableW(daemon__required_env_vars[i].wide, NULL, 0);
       required_vars_value_len[i] = var_size;
@@ -360,8 +362,7 @@ daemon__env_list_to_block(const char *const *env_list, WCHAR **dst_ptr) {
       i++;
     } else {
       ptr_copy++;
-      if (cmp == 0)
-        i++;
+      if (cmp == 0) i++;
     }
   }
 
@@ -402,7 +403,7 @@ daemon__env_list_to_block(const char *const *env_list, WCHAR **dst_ptr) {
 
   free(p);
 
-  *dst_ptr = dst;
+  *result = dst;
 
   return 0;
 }
@@ -446,12 +447,16 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
     NULL,
     NULL,
     FALSE,
-    CREATE_NO_WINDOW | DETACHED_PROCESS,
+    CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_UNICODE_ENVIRONMENT,
     environment,
     NULL,
     &si,
     &pi
   );
+
+  free(application_name);
+  free(command_line);
+  free(environment);
 
   if (!success) return -1;
 
