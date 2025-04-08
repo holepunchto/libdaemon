@@ -9,8 +9,6 @@
 
 #include "../include/daemon.h"
 
-typedef intptr_t ssize_t;
-
 /**
  * Copyright Joyent, Inc. and other Node contributors. All rights reserved.
  *
@@ -32,6 +30,34 @@ typedef intptr_t ssize_t;
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
+
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
+
+typedef intptr_t ssize_t;
+
+typedef struct {
+  const WCHAR *const wide;
+  const WCHAR *const wide_eq;
+  const size_t len;
+} daemon_env_var_t;
+
+#define V(str) {L##str, L##str L"=", sizeof(str)}
+
+static const daemon_env_var_t daemon__required_env_vars[] = {
+  V("HOMEDRIVE"),
+  V("HOMEPATH"),
+  V("LOGONSERVER"),
+  V("PATH"),
+  V("SYSTEMDRIVE"),
+  V("SYSTEMROOT"),
+  V("TEMP"),
+  V("USERDOMAIN"),
+  V("USERNAME"),
+  V("USERPROFILE"),
+  V("WINDIR"),
+};
+
+#undef V
 
 static inline int32_t
 daemon__wtf8_decode1(const char **input) {
@@ -74,8 +100,10 @@ daemon__utf16_length_from_wtf8(const char *source_ptr) {
 
   do {
     code_point = daemon__wtf8_decode1(&source_ptr);
+
     if (code_point < 0) return -1;
     if (code_point > 0xFFFF) w_target_len++;
+
     w_target_len++;
   } while (*source_ptr++);
 
@@ -88,9 +116,8 @@ daemon__wtf8_to_utf16(const char *source_ptr, uint16_t *w_target) {
 
   do {
     code_point = daemon__wtf8_decode1(&source_ptr);
-    assert(code_point >= 0);
+
     if (code_point > 0xFFFF) {
-      assert(code_point < 0x10FFFF);
       *w_target++ = (((code_point - 0x10000) >> 10) + 0xD800);
       *w_target++ = ((code_point - 0x10000) & 0x3FF) + 0xDC00;
     } else {
@@ -105,7 +132,7 @@ daemon__utf8_to_utf16(const char *utf8, WCHAR **result) {
   len = daemon__utf16_length_from_wtf8(utf8);
   if (len < 0) return -1;
 
-  WCHAR *utf16 = malloc(sizeof(WCHAR) * len);
+  WCHAR *utf16 = malloc(len * sizeof(WCHAR));
   assert(utf16);
 
   daemon__wtf8_to_utf16(utf8, utf16);
@@ -224,6 +251,162 @@ daemon__argv_to_command_line(const char *const *args, WCHAR **dst_ptr) {
   return 0;
 }
 
+static int
+daemon__env_strncmp(const wchar_t *a, int na, const wchar_t *b) {
+  wchar_t *a_eq;
+  wchar_t *b_eq;
+  int nb;
+  int r;
+
+  if (na < 0) {
+    a_eq = wcschr(a, L'=');
+    assert(a_eq);
+
+    na = (int) (long) (a_eq - a);
+  } else {
+    na--;
+  }
+
+  b_eq = wcschr(b, L'=');
+  assert(b_eq);
+
+  nb = b_eq - b;
+
+  r = CompareStringOrdinal(a, na, b, nb, TRUE);
+
+  return r - CSTR_EQUAL;
+}
+
+static int
+daemon__env_wcscmp(const void *a, const void *b) {
+  wchar_t *astr = *(wchar_t *const *) a;
+  wchar_t *bstr = *(wchar_t *const *) b;
+
+  return daemon__env_strncmp(astr, -1, bstr);
+}
+
+static inline int
+daemon__env_list_to_block(const char *const *env_list, WCHAR **dst_ptr) {
+  if (env_list == NULL) {
+    *dst_ptr = NULL;
+
+    return 0;
+  }
+
+  WCHAR *dst;
+  WCHAR *ptr;
+  const char *const *env;
+  size_t env_len = 0;
+  size_t len;
+  size_t i;
+  size_t var_size;
+  size_t env_block_count = 1;
+  WCHAR *dst_copy;
+  WCHAR **ptr_copy;
+  WCHAR **env_copy;
+  char *p;
+  size_t required_vars_value_len[ARRAY_SIZE(daemon__required_env_vars)];
+
+  for (env = env_list; *env; env++) {
+    if (strchr(*env, '=')) {
+      ssize_t len = daemon__utf16_length_from_wtf8(*env);
+      if (len < 0) return len;
+
+      env_len += len;
+      env_block_count++;
+    }
+  }
+
+  len = env_block_count * sizeof(WCHAR *);
+
+  p = malloc(len + env_len * sizeof(WCHAR));
+  assert(p);
+
+  env_copy = (void *) &p[0];
+  dst_copy = (void *) &p[len];
+
+  ptr = dst_copy;
+  ptr_copy = env_copy;
+
+  for (env = env_list; *env; env++) {
+    if (strchr(*env, '=')) {
+      ssize_t len = daemon__utf16_length_from_wtf8(*env);
+
+      daemon__wtf8_to_utf16(*env, ptr);
+
+      *ptr_copy++ = ptr;
+      ptr += len;
+    }
+  }
+
+  *ptr_copy = NULL;
+
+  qsort(env_copy, env_block_count - 1, sizeof(wchar_t *), daemon__env_wcscmp);
+
+  for (ptr_copy = env_copy, i = 0; i < ARRAY_SIZE(daemon__required_env_vars);) {
+    int cmp;
+    if (!*ptr_copy) {
+      cmp = -1;
+    } else {
+      cmp = daemon__env_strncmp(daemon__required_env_vars[i].wide_eq, daemon__required_env_vars[i].len, *ptr_copy);
+    }
+    if (cmp < 0) {
+      var_size = GetEnvironmentVariableW(daemon__required_env_vars[i].wide, NULL, 0);
+      required_vars_value_len[i] = var_size;
+      if (var_size != 0) {
+        env_len += daemon__required_env_vars[i].len;
+        env_len += var_size;
+      }
+      i++;
+    } else {
+      ptr_copy++;
+      if (cmp == 0)
+        i++;
+    }
+  }
+
+  dst = malloc((1 + env_len) * sizeof(WCHAR));
+  assert(dst);
+
+  for (ptr = dst, ptr_copy = env_copy, i = 0; *ptr_copy || i < ARRAY_SIZE(daemon__required_env_vars); ptr += len) {
+    int cmp;
+
+    if (i >= ARRAY_SIZE(daemon__required_env_vars)) {
+      cmp = 1;
+    } else if (!*ptr_copy) {
+      cmp = -1;
+    } else {
+      cmp = daemon__env_strncmp(daemon__required_env_vars[i].wide_eq, daemon__required_env_vars[i].len, *ptr_copy);
+    }
+
+    if (cmp < 0) {
+      len = required_vars_value_len[i];
+      if (len) {
+        wcscpy(ptr, daemon__required_env_vars[i].wide_eq);
+        ptr += daemon__required_env_vars[i].len;
+        var_size = GetEnvironmentVariableW(daemon__required_env_vars[i].wide, ptr, (int) (env_len - (ptr - dst)));
+        if (var_size != (DWORD) (len - 1)) {
+          abort();
+        }
+      }
+      i++;
+    } else {
+      len = wcslen(*ptr_copy) + 1;
+      wmemcpy(ptr, *ptr_copy, len);
+      ptr_copy++;
+      if (cmp == 0) i++;
+    }
+  }
+
+  *ptr = L'\0';
+
+  free(p);
+
+  *dst_ptr = dst;
+
+  return 0;
+}
+
 int
 daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const char *const env[]) {
   int err;
@@ -244,6 +427,16 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
   err = daemon__argv_to_command_line(argv, &command_line);
   if (err < 0) {
     free(application_name);
+
+    return err;
+  }
+
+  WCHAR *environment;
+  err = daemon__env_list_to_block(env, &environment);
+  if (err < 0) {
+    free(application_name);
+    free(command_line);
+
     return err;
   }
 
@@ -254,7 +447,7 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
     NULL,
     FALSE,
     CREATE_NO_WINDOW | DETACHED_PROCESS,
-    NULL,
+    environment,
     NULL,
     &si,
     &pi
