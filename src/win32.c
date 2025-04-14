@@ -436,7 +436,7 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
   WCHAR *current_directory = NULL;
   if (cwd) {
     err = daemon__utf8_to_utf16(cwd, &current_directory);
-    if (err) {
+    if (err < 0) {
       free(application_name);
       free(command_line);
       free(environment);
