@@ -7,7 +7,7 @@ main() {
   int e;
 
   daemon_t daemon;
-  e = daemon_spawn(&daemon, "./this-does-not-exist", NULL, NULL);
+  e = daemon_spawn(&daemon, "./this-does-not-exist", NULL, NULL, NULL);
   assert(e != 0);
 
   printf("daemon.pid=%d\n", daemon.pid);

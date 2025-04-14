@@ -409,7 +409,7 @@ daemon__env_list_to_block(const char *const *env_list, WCHAR **result) {
 }
 
 int
-daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const char *const env[]) {
+daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const char *const env[], const char *cwd) {
   int err;
 
   STARTUPINFOW si;

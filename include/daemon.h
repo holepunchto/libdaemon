@@ -20,7 +20,7 @@ struct daemon_s {
 };
 
 int
-daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const char *const env[]);
+daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const char *const env[], const char *cwd);
 
 #ifdef __cplusplus
 }

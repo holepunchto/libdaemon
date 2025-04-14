@@ -7,7 +7,7 @@ main() {
   int e;
 
   daemon_t daemon;
-  e = daemon_spawn(&daemon, FIXTURE_SLEEP, NULL, NULL);
+  e = daemon_spawn(&daemon, FIXTURE_SLEEP, NULL, NULL, NULL);
   assert(e == 0);
 
   printf("daemon.pid=%d\n", daemon.pid);
