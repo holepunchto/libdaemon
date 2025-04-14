@@ -439,7 +439,7 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
     if (err) {
       free(application_name);
       free(command_line);
-      free(enviroment);
+      free(environment);
 
       return err;
     }
