@@ -461,6 +461,7 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
   free(application_name);
   free(command_line);
   free(environment);
+  free(current_directory);
 
   if (!success) return -1;
 
