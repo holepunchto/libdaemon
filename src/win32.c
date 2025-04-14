@@ -198,12 +198,6 @@ daemon__quote_argument(const WCHAR *source, WCHAR *target) {
 
 static inline int
 daemon__argv_to_command_line(const char *const *args, WCHAR **result) {
-  if (args == NULL) {
-    *result = NULL;
-
-    return 0;
-  }
-
   const char *const *arg;
   WCHAR *dst = NULL;
   WCHAR *tmp = NULL;
@@ -287,12 +281,6 @@ daemon__env_wcscmp(const void *a, const void *b) {
 
 static inline int
 daemon__env_list_to_block(const char *const *env_list, WCHAR **result) {
-  if (env_list == NULL) {
-    *result = NULL;
-
-    return 0;
-  }
-
   WCHAR *dst;
   WCHAR *ptr;
   const char *const *env;
@@ -424,21 +412,37 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
   err = daemon__utf8_to_utf16(file, &application_name);
   if (err < 0) return err;
 
-  WCHAR *command_line;
-  err = daemon__argv_to_command_line(argv, &command_line);
-  if (err < 0) {
-    free(application_name);
+  WCHAR *command_line = NULL;
+  if (argv) {
+    err = daemon__argv_to_command_line(argv, &command_line);
+    if (err < 0) {
+      free(application_name);
 
-    return err;
+      return err;
+    }
   }
 
-  WCHAR *environment;
-  err = daemon__env_list_to_block(env, &environment);
-  if (err < 0) {
-    free(application_name);
-    free(command_line);
+  WCHAR *environment = NULL;
+  if (env) {
+    err = daemon__env_list_to_block(env, &environment);
+    if (err < 0) {
+      free(application_name);
+      free(command_line);
 
-    return err;
+      return err;
+    }
+  }
+
+  WCHAR *current_directory = NULL;
+  if (cwd) {
+    err = daemon__utf8_to_utf16(cwd, &current_directory);
+    if (err) {
+      free(application_name);
+      free(command_line);
+      free(enviroment);
+
+      return err;
+    }
   }
 
   BOOL success = CreateProcessW(
@@ -449,7 +453,7 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
     FALSE,
     CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_UNICODE_ENVIRONMENT,
     environment,
-    NULL,
+    current_directory,
     &si,
     &pi
   );
