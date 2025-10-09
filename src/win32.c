@@ -400,10 +400,67 @@ int
 daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const char *const env[], const char *cwd) {
   int err;
 
+  SECURITY_ATTRIBUTES sa;
+  ZeroMemory(&sa, sizeof(sa));
+
+  sa.nLength = sizeof(sa);
+  sa.bInheritHandle = TRUE;
+
+  HANDLE nul_in = CreateFileW(
+    L"NUL",
+    FILE_GENERIC_READ,
+    FILE_SHARE_READ | FILE_SHARE_WRITE,
+    &sa,
+    OPEN_EXISTING,
+    FILE_ATTRIBUTE_NORMAL,
+    NULL
+  );
+
+  if (nul_in == INVALID_HANDLE_VALUE) {
+    return -1;
+  }
+
+  HANDLE nul_out = CreateFileW(
+    L"NUL",
+    FILE_GENERIC_WRITE | FILE_READ_ATTRIBUTES,
+    FILE_SHARE_READ | FILE_SHARE_WRITE,
+    &sa,
+    OPEN_EXISTING,
+    FILE_ATTRIBUTE_NORMAL,
+    NULL
+  );
+
+  if (nul_out == INVALID_HANDLE_VALUE) {
+    CloseHandle(nul_in);
+
+    return -1;
+  }
+
+  HANDLE nul_err = CreateFileW(
+    L"NUL",
+    FILE_GENERIC_WRITE | FILE_READ_ATTRIBUTES,
+    FILE_SHARE_READ | FILE_SHARE_WRITE,
+    &sa,
+    OPEN_EXISTING,
+    FILE_ATTRIBUTE_NORMAL,
+    NULL
+  );
+
+  if (nul_err == INVALID_HANDLE_VALUE) {
+    CloseHandle(nul_in);
+    CloseHandle(nul_out);
+
+    return -1;
+  }
+
   STARTUPINFOW si;
   ZeroMemory(&si, sizeof(si));
 
   si.cb = sizeof(si);
+  si.dwFlags |= STARTF_USESTDHANDLES;
+  si.hStdInput = nul_in;
+  si.hStdOutput = nul_out;
+  si.hStdError = nul_err;
 
   PROCESS_INFORMATION pi;
   ZeroMemory(&pi, sizeof(pi));
@@ -416,6 +473,10 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
   if (argv) {
     err = daemon__argv_to_command_line(argv, &command_line);
     if (err < 0) {
+      CloseHandle(nul_in);
+      CloseHandle(nul_out);
+      CloseHandle(nul_err);
+
       free(application_name);
 
       return err;
@@ -426,6 +487,10 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
   if (env) {
     err = daemon__env_list_to_block(env, &environment);
     if (err < 0) {
+      CloseHandle(nul_in);
+      CloseHandle(nul_out);
+      CloseHandle(nul_err);
+
       free(application_name);
       free(command_line);
 
@@ -437,6 +502,10 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
   if (cwd) {
     err = daemon__utf8_to_utf16(cwd, &current_directory);
     if (err < 0) {
+      CloseHandle(nul_in);
+      CloseHandle(nul_out);
+      CloseHandle(nul_err);
+
       free(application_name);
       free(command_line);
       free(environment);
@@ -450,13 +519,17 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
     command_line,
     NULL,
     NULL,
-    FALSE,
-    CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_UNICODE_ENVIRONMENT,
+    TRUE,
+    DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_UNICODE_ENVIRONMENT,
     environment,
     current_directory,
     &si,
     &pi
   );
+
+  CloseHandle(nul_in);
+  CloseHandle(nul_out);
+  CloseHandle(nul_err);
 
   free(application_name);
   free(command_line);
@@ -466,6 +539,7 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
   if (!success) return -1;
 
   CloseHandle(pi.hThread);
+  CloseHandle(pi.hProcess);
 
   daemon->pid = (int) pi.dwProcessId;
 
