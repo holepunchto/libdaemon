@@ -21,8 +21,6 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
   err = pipe(fd);
   if (err < 0) return -1;
 
-  umask(0);
-
   struct rlimit rl;
   err = getrlimit(RLIMIT_NOFILE, &rl);
   if (err < 0) return -1;
