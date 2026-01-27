@@ -436,23 +436,6 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
     return -1;
   }
 
-  HANDLE nul_err = CreateFileW(
-    L"NUL",
-    FILE_GENERIC_WRITE | FILE_READ_ATTRIBUTES,
-    FILE_SHARE_READ | FILE_SHARE_WRITE,
-    &sa,
-    OPEN_EXISTING,
-    FILE_ATTRIBUTE_NORMAL,
-    NULL
-  );
-
-  if (nul_err == INVALID_HANDLE_VALUE) {
-    CloseHandle(nul_in);
-    CloseHandle(nul_out);
-
-    return -1;
-  }
-
   STARTUPINFOW si;
   ZeroMemory(&si, sizeof(si));
 
@@ -460,7 +443,7 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
   si.dwFlags |= STARTF_USESTDHANDLES;
   si.hStdInput = nul_in;
   si.hStdOutput = nul_out;
-  si.hStdError = nul_err;
+  si.hStdError = nul_out;
 
   PROCESS_INFORMATION pi;
   ZeroMemory(&pi, sizeof(pi));
@@ -475,7 +458,6 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
     if (err < 0) {
       CloseHandle(nul_in);
       CloseHandle(nul_out);
-      CloseHandle(nul_err);
 
       free(application_name);
 
@@ -489,7 +471,6 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
     if (err < 0) {
       CloseHandle(nul_in);
       CloseHandle(nul_out);
-      CloseHandle(nul_err);
 
       free(application_name);
       free(command_line);
@@ -504,7 +485,6 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
     if (err < 0) {
       CloseHandle(nul_in);
       CloseHandle(nul_out);
-      CloseHandle(nul_err);
 
       free(application_name);
       free(command_line);
@@ -529,7 +509,6 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
 
   CloseHandle(nul_in);
   CloseHandle(nul_out);
-  CloseHandle(nul_err);
 
   free(application_name);
   free(command_line);

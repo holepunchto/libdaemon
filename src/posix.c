@@ -81,14 +81,26 @@ daemon_spawn(daemon_t *daemon, const char *file, const char *const argv[], const
     if (err < 0) goto err;
   }
 
-  err = open("/dev/null", O_RDWR);
+  err = open("/dev/null", O_RDONLY);
   if (err < 0) goto err;
 
-  int io = err;
-  dup2(io, 0);
-  dup2(io, 1);
-  dup2(io, 2);
-  if (io > 2) close(io);
+  int nul_in = err;
+
+  err = open("/dev/null", O_WRONLY);
+  if (err < 0) {
+    close(nul_in);
+
+    goto err;
+  }
+
+  int nul_out = err;
+
+  dup2(nul_in, STDIN_FILENO);
+  dup2(nul_out, STDOUT_FILENO);
+  dup2(nul_out, STDERR_FILENO);
+
+  if (nul_in > STDERR_FILENO) close(nul_in);
+  if (nul_out > STDERR_FILENO) close(nul_out);
 
   execve(file, (char *const *) argv, (char *const *) env);
 
