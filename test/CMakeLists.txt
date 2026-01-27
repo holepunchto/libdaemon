@@ -3,6 +3,7 @@ add_subdirectory(fixtures)
 list(APPEND tests
   basic
   file-missing
+  writev
 )
 
 foreach(test IN LISTS tests)
@@ -20,6 +21,7 @@ foreach(test IN LISTS tests)
     ${test}
     PRIVATE
       "FIXTURE_SLEEP=\"$<TARGET_FILE:sleep>\""
+      "FIXTURE_WRITEV_STDOUT=\"$<TARGET_FILE:writev_stdout>\""
   )
 
   add_test(
